@@ -21,13 +21,10 @@ func run() int {
 	cmdFactory := command.NewFactory(envRepo)
 	cacheStep := step.New(logger, inputParser, envRepo, cmdFactory)
 
-	exitCode := 0
-
 	if err := cacheStep.Run(); err != nil {
 		logger.Errorf(err.Error())
-		exitCode = 1
-		return exitCode
+		return 1
 	}
 
-	return exitCode
+	return 0
 }
