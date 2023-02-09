@@ -1,0 +1,51 @@
+title: Restore Dart Cache
+summary: Restores Dart (Flutter) dependencies. This Step needs to be used in combination with **Save Dart Cache**.
+description: |
+  Restores Dart (Flutter) dependencies. This Step needs to be used in combination with **Save Dart Cache**.
+
+  This Step is based on [key-based caching](https://devcenter.bitrise.io/en/builds/caching/key-based-caching.html) and sets up the cache key and path automatically for Dart dependencies. If you'd like to change the cache keys, you might want to use the generic [Restore cache](https://github.com/bitrise-steplib/bitrise-step-restore-cache) Step instead.
+
+  #### Related steps
+
+  [Save Dart cache](https://github.com/bitrise-steplib/bitrise-step-save-dart-cache/)
+
+  [Restore cache](https://github.com/bitrise-steplib/bitrise-step-restore-cache/)
+
+website: https://github.com/bitrise-steplib/bitrise-step-restore-dart-cache
+source_code_url: https://github.com/bitrise-steplib/bitrise-step-restore-dart-cache
+support_url: https://github.com/bitrise-steplib/bitrise-step-restore-dart-cache/issues
+
+type_tags:
+- utility
+
+run_if: .IsCI
+is_skippable: true
+
+toolkit:
+  go:
+    package_name: github.com/bitrise-steplib/bitrise-step-restore-dart-cache
+
+deps:
+  brew:
+  - name: zstd
+
+inputs:
+- verbose: "false"
+  opts:
+    title: Verbose logging
+    summary: Enable logging additional information for troubleshooting
+    is_required: true
+    value_options:
+    - "true"
+    - "false"
+
+outputs:
+- BITRISE_CACHE_HIT:
+  opts:
+    title: Cache hit
+    description: |-
+      Indicates if a cache entry was restored. Possible values:
+
+      - `exact`: Exact cache hit for the first requested cache key
+      - `partial`: Cache hit for a key other than the first
+      - `false` No cache hit, nothing was restored

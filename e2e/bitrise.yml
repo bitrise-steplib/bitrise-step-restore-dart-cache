@@ -1,0 +1,106 @@
+format_version: "11"
+default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
+
+app:
+  envs:
+  # Shared secrets for testing, use a .bitrise.secrets.yml file to define these locally
+  - BITRISEIO_CACHE_SERVICE_URL: $BITRISEIO_CACHE_SERVICE_URL
+  - CACHE_API_CLIENT_SECRET: $CACHE_API_CLIENT_SECRET
+
+workflows:
+  test_dart:
+    envs:
+    - TEST_APP_URL: https://github.com/robertodoering/harpy.git
+    - COMMIT: 8f66175
+    - FLUTTER_VERSION: 3.7.1
+    before_run:
+    - _generate_api_token
+    - _setup
+    steps:
+    - change-workdir:
+        title: Switch working dir to _tmp
+        inputs:
+        - path: ./_tmp
+    - flutter-installer@0:
+        run_if: "true"
+        inputs:
+        - is_update: "true"
+        - version: $FLUTTER_VERSION
+    - script:
+        title: Install dependencies
+        inputs:
+        - content: |-
+            set -ex
+            flutter pub get
+    - git::git@github.com:bitrise-steplib/bitrise-step-save-cache.git@main:
+        run_if: "true"
+        is_skippable: false
+        inputs:
+        - key: |-
+            {{ .OS }}-{{ .Arch }}-dart-cache-{{ checksum "pubspec.lock" }}
+        - paths: ~/.pub-cache
+        - verbose: "true"
+    - script:
+        title: Remove pub cache
+        inputs:
+        - content: |
+            set -ex
+            rm -rf ~/.pub-cache
+    - path::./:
+        title: Execute step
+        run_if: "true"
+        is_skippable: false
+        inputs:
+        - verbose: "true"
+    - script:
+        title: Check restored cache
+        inputs:
+        - content: |
+            set -ex
+
+            echo $BITRISE_CACHE_HIT
+            if [ ! -d ~/.pub-cache ]; then
+              echo "~/.pub-cache directory doesn't exist"
+              exit 1
+            fi
+    - script:
+        title: Install dependencies again
+        inputs:
+        - content: |-
+            set -ex
+            flutter pub get
+
+  _setup:
+    steps:
+    - script:
+        title: Delete _tmp dir
+        inputs:
+        - content: rm -rf _tmp
+    - git::https://github.com/bitrise-steplib/bitrise-step-simple-git-clone.git:
+        inputs:
+        - repository_url: $TEST_APP_URL
+        - clone_into_dir: ./_tmp
+        - commit: $COMMIT
+
+  _generate_api_token:
+    steps:
+    - script:
+        title: Generate API access token
+        description: Generate an expiring API token using $API_CLIENT_SECRET
+        inputs:
+        - content: |
+            #!/bin/env bash
+            set -e
+
+            json_response=$(curl --fail -X POST https://auth.services.bitrise.io/auth/realms/bitrise-services/protocol/openid-connect/token -k \
+                --data "client_id=bitrise-steps" \
+                --data "client_secret=$CACHE_API_CLIENT_SECRET" \
+                --data "grant_type=urn:ietf:params:oauth:grant-type:uma-ticket" \
+                --data "claim_token=eyJhcHBfaWQiOlsiY2FjaGUtc3RlcHMtdGVzdHMiXSwgIm9yZ19pZCI6WyJ0ZXN0LW9yZy1pZCJdLCAiYWJjc19hY2Nlc3NfZ3JhbnRlZCI6WyJ0cnVlIl19" \
+                --data "claim_token_format=urn:ietf:params:oauth:token-type:jwt" \
+                --data "audience=bitrise-services")
+
+            auth_token=$(echo $json_response | jq -r .access_token)
+
+            envman add --key BITRISEIO_ABCS_API_URL --value $BITRISEIO_CACHE_SERVICE_URL
+            envman add --key BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN --value $auth_token --sensitive
