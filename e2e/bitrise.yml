@@ -10,9 +10,9 @@ app:
 workflows:
   test_dart:
     envs:
-    - TEST_APP_URL: https://github.com/robertodoering/harpy.git
-    - COMMIT: 8f66175
-    - FLUTTER_VERSION: 3.7.1
+    - TEST_APP_URL: https://github.com/bitrise-io/sample-apps-flutter-veggieseasons.git
+    - COMMIT: 6210b5dff666ff15fabb66cbfbc51a2b53a3c511
+    - FLUTTER_VERSION: 3.13.6
     before_run:
     - _generate_api_token
     - _setup
