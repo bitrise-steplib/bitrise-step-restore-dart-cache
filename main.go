@@ -8,7 +8,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/env"
 	"github.com/bitrise-io/go-utils/v2/exitcode"
 	"github.com/bitrise-io/go-utils/v2/log"
-	"github.com/bitrise-steplib/steps-restore-dart-cache/step"
+	"github.com/bitrise-steplib/bitrise-step-restore-dart-cache/step"
 )
 
 func main() {
