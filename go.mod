@@ -1,4 +1,4 @@
-module github.com/bitrise-steplib/steps-restore-dart-cache
+module github.com/bitrise-steplib/bitrise-step-restore-dart-cache
 
 go 1.17
 
