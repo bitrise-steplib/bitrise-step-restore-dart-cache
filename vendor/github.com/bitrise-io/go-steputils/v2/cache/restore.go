@@ -22,9 +22,10 @@ import (
 // RestoreCacheInput is the information that comes from the cache steps that call this shared implementation
 type RestoreCacheInput struct {
 	// StepId identifies the exact cache step. Used for logging events.
-	StepId  string
-	Verbose bool
-	Keys    []string
+	StepId         string
+	Verbose        bool
+	Keys           []string
+	NumFullRetries int
 }
 
 // Restorer ...
@@ -37,12 +38,14 @@ type restoreCacheConfig struct {
 	Keys           []string
 	APIBaseURL     stepconf.Secret
 	APIAccessToken stepconf.Secret
+	NumFullRetries int
 }
 
 type restorer struct {
 	envRepo    env.Repository
 	logger     log.Logger
 	cmdFactory command.Factory
+	downloader network.Downloader
 }
 
 type downloadResult struct {
@@ -50,9 +53,19 @@ type downloadResult struct {
 	matchedKey string
 }
 
-// NewRestorer ...
-func NewRestorer(envRepo env.Repository, logger log.Logger, cmdFactory command.Factory) *restorer {
-	return &restorer{envRepo: envRepo, logger: logger, cmdFactory: cmdFactory}
+// NewRestorer creates a new cache restorer instance. `downloader` can be nil, unless you want to provide a custom `Downloader` implementation.
+func NewRestorer(
+	envRepo env.Repository,
+	logger log.Logger,
+	cmdFactory command.Factory,
+	downloader network.Downloader,
+) *restorer {
+	var downloaderImpl network.Downloader = downloader
+	if downloader == nil {
+		downloaderImpl = network.DefaultDownloader{}
+	}
+
+	return &restorer{envRepo: envRepo, logger: logger, cmdFactory: cmdFactory, downloader: downloaderImpl}
 }
 
 // Restore ...
@@ -96,7 +109,12 @@ func (r *restorer) Restore(input RestoreCacheInput) error {
 	r.logger.Println()
 	r.logger.Infof("Restoring archive...")
 	extractionStartTime := time.Now()
-	if err := compression.Decompress(result.filePath, r.logger, r.envRepo); err != nil {
+	archiver := compression.NewArchiver(
+		r.logger,
+		r.envRepo,
+		compression.NewDependencyChecker(r.logger, r.envRepo))
+
+	if err := archiver.Decompress(result.filePath, ""); err != nil {
 		return fmt.Errorf("failed to decompress cache archive: %w", err)
 	}
 	extractionTime := time.Since(extractionStartTime).Round(time.Second)
@@ -132,6 +150,7 @@ func (r *restorer) createConfig(input RestoreCacheInput) (restoreCacheConfig, er
 		Keys:           keys,
 		APIBaseURL:     stepconf.Secret(apiBaseURL),
 		APIAccessToken: stepconf.Secret(apiAccessToken),
+		NumFullRetries: input.NumFullRetries,
 	}, nil
 }
 
@@ -166,12 +185,13 @@ func (r *restorer) download(ctx context.Context, config restoreCacheConfig) (dow
 	downloadPath := filepath.Join(dir, name)
 
 	params := network.DownloadParams{
-		APIBaseURL:   string(config.APIBaseURL),
-		Token:        string(config.APIAccessToken),
-		CacheKeys:    config.Keys,
-		DownloadPath: downloadPath,
+		APIBaseURL:     string(config.APIBaseURL),
+		Token:          string(config.APIAccessToken),
+		CacheKeys:      config.Keys,
+		DownloadPath:   downloadPath,
+		NumFullRetries: config.NumFullRetries,
 	}
-	matchedKey, err := network.Download(ctx, params, r.logger)
+	matchedKey, err := r.downloader.Download(ctx, params, r.logger)
 	if err != nil {
 		return downloadResult{}, err
 	}
