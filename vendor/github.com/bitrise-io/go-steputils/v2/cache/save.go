@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -25,6 +26,9 @@ type SaveCacheInput struct {
 	Verbose bool
 	Key     string
 	Paths   []string
+	// CompressionLevel is the zstd compression level used. Valid values are between 1 and 19.
+	// If not provided (0), the default value (3) will be used.
+	CompressionLevel int
 	// IsKeyUnique indicates that the cache key is enough for knowing the cache archive is different from
 	// another cache archive.
 	// This can be set to true if the cache key contains a checksum that changes when any of the cached files change.
@@ -39,11 +43,12 @@ type Saver interface {
 }
 
 type saveCacheConfig struct {
-	Verbose        bool
-	Key            string
-	Paths          []string
-	APIBaseURL     stepconf.Secret
-	APIAccessToken stepconf.Secret
+	Verbose          bool
+	Key              string
+	Paths            []string
+	CompressionLevel int
+	APIBaseURL       stepconf.Secret
+	APIAccessToken   stepconf.Secret
 }
 
 type saver struct {
@@ -52,22 +57,29 @@ type saver struct {
 	pathProvider pathutil.PathProvider
 	pathModifier pathutil.PathModifier
 	pathChecker  pathutil.PathChecker
+	uploader     network.Uploader
 }
 
-// NewSaver ...
+// NewSaver creates a new cache saver instance. `uploader` can be nil, unless you want to provide a custom `Uploader` implementation.
 func NewSaver(
 	envRepo env.Repository,
 	logger log.Logger,
 	pathProvider pathutil.PathProvider,
 	pathModifier pathutil.PathModifier,
 	pathChecker pathutil.PathChecker,
+	uploader network.Uploader,
 ) *saver {
+	var uploaderImpl network.Uploader = uploader
+	if uploader == nil {
+		uploaderImpl = network.DefaultUploader{}
+	}
 	return &saver{
 		envRepo:      envRepo,
 		logger:       logger,
 		pathProvider: pathProvider,
 		pathModifier: pathModifier,
 		pathChecker:  pathChecker,
+		uploader:     uploaderImpl,
 	}
 }
 
@@ -97,7 +109,7 @@ func (s *saver) Save(input SaveCacheInput) error {
 	s.logger.Println()
 	s.logger.Infof("Creating archive...")
 	compressionStartTime := time.Now()
-	archivePath, err := s.compress(config.Paths)
+	archivePath, err := s.compress(config.Paths, config.CompressionLevel)
 	if err != nil {
 		return fmt.Errorf("compression failed: %s", err)
 	}
@@ -129,7 +141,7 @@ func (s *saver) Save(input SaveCacheInput) error {
 	s.logger.Println()
 	s.logger.Infof("Uploading archive...")
 	uploadStartTime := time.Now()
-	err = s.upload(archivePath, fileInfo.Size(), config)
+	err = s.upload(archivePath, fileInfo.Size(), archiveChecksum, config)
 	if err != nil {
 		return fmt.Errorf("cache upload failed: %w", err)
 	}
@@ -167,12 +179,20 @@ func (s *saver) createConfig(input SaveCacheInput) (saveCacheConfig, error) {
 		return saveCacheConfig{}, fmt.Errorf("the secret 'BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN' is not defined")
 	}
 
+	if input.CompressionLevel == 0 {
+		input.CompressionLevel = 3
+	}
+	if input.CompressionLevel < 1 || input.CompressionLevel > 19 {
+		return saveCacheConfig{}, fmt.Errorf("compression level should be between 1 and 19")
+	}
+
 	return saveCacheConfig{
-		Verbose:        input.Verbose,
-		Key:            evaluatedKey,
-		Paths:          finalPaths,
-		APIBaseURL:     stepconf.Secret(apiBaseURL),
-		APIAccessToken: stepconf.Secret(apiAccessToken),
+		Verbose:          input.Verbose,
+		Key:              evaluatedKey,
+		Paths:            finalPaths,
+		CompressionLevel: input.CompressionLevel,
+		APIBaseURL:       stepconf.Secret(apiBaseURL),
+		APIAccessToken:   stepconf.Secret(apiAccessToken),
 	}, nil
 }
 
@@ -234,7 +254,7 @@ func (s *saver) evaluateKey(keyTemplate string) (string, error) {
 	return model.Evaluate(keyTemplate)
 }
 
-func (s *saver) compress(paths []string) (string, error) {
+func (s *saver) compress(paths []string, compressionLevel int) (string, error) {
 	if compression.AreAllPathsEmpty(paths) {
 		s.logger.Warnf("The provided paths are all empty, skipping compression and upload.")
 		os.Exit(0)
@@ -247,7 +267,12 @@ func (s *saver) compress(paths []string) (string, error) {
 	}
 	archivePath := filepath.Join(tempDir, fileName)
 
-	err = compression.Compress(archivePath, paths, s.logger, s.envRepo)
+	archiver := compression.NewArchiver(
+		s.logger,
+		s.envRepo,
+		compression.NewDependencyChecker(s.logger, s.envRepo))
+
+	err = archiver.Compress(archivePath, paths, compressionLevel)
 	if err != nil {
 		return "", err
 	}
@@ -255,13 +280,14 @@ func (s *saver) compress(paths []string) (string, error) {
 	return archivePath, nil
 }
 
-func (s *saver) upload(archivePath string, archiveSize int64, config saveCacheConfig) error {
+func (s *saver) upload(archivePath string, archiveSize int64, archiveChecksum string, config saveCacheConfig) error {
 	params := network.UploadParams{
-		APIBaseURL:  string(config.APIBaseURL),
-		Token:       string(config.APIAccessToken),
-		ArchivePath: archivePath,
-		ArchiveSize: archiveSize,
-		CacheKey:    config.Key,
+		APIBaseURL:      string(config.APIBaseURL),
+		Token:           string(config.APIAccessToken),
+		ArchivePath:     archivePath,
+		ArchiveChecksum: archiveChecksum,
+		ArchiveSize:     archiveSize,
+		CacheKey:        config.Key,
 	}
-	return network.Upload(params, s.logger)
+	return s.uploader.Upload(context.Background(), params, s.logger)
 }
