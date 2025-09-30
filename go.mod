@@ -3,8 +3,8 @@ module github.com/bitrise-steplib/bitrise-step-restore-dart-cache
 go 1.20
 
 require (
-	github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.34
-	github.com/bitrise-io/go-utils/v2 v2.0.0-alpha.23
+	github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.40
+	github.com/bitrise-io/go-utils/v2 v2.0.0-alpha.26
 )
 
 require (
