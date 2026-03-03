@@ -3,7 +3,7 @@ summary: Restores Dart (Flutter) dependencies. This Step needs to be used in com
 description: |
   Restores Dart (Flutter) dependencies. This Step needs to be used in combination with **Save Dart Cache**.
 
-  This Step is based on [key-based caching](https://devcenter.bitrise.io/en/builds/caching/key-based-caching.html) and sets up the cache key and path automatically for Dart dependencies. If you'd like to change the cache keys, you might want to use the generic [Restore cache](https://github.com/bitrise-steplib/bitrise-step-restore-cache) Step instead.
+  This Step is based on [key-based caching](https://docs.bitrise.io/en/bitrise-ci/dependencies-and-caching/key-based-caching.html) and sets up the cache key and path automatically for Dart dependencies. If you'd like to change the cache keys, you might want to use the generic [Restore cache](https://github.com/bitrise-steplib/bitrise-step-restore-cache) Step instead.
 
   #### Related steps
 
@@ -48,6 +48,15 @@ inputs:
       Number of retries to attempt when downloading a cache archive fails.
 
       The value 0 means no retries are attempted.
+    is_required: true
+
+- timeout: 600
+  opts:
+    category: Debugging
+    title: Timeout
+    summary: Timeout in seconds
+    description: |-
+      Timeout in seconds
     is_required: true
 
 outputs:
