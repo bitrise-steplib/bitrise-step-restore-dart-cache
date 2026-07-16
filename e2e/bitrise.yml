@@ -30,7 +30,7 @@ workflows:
         is_skippable: false
         inputs:
         - key: |-
-            {{ .OS }}-{{ .Arch }}-dart-cache-{{ checksum "pubspec.lock" }}
+            {{ getenv "BITRISEIO_STACK_ID" }}-dart-cache-{{ checksum "pubspec.lock" }}
         - paths: ~/.pub-cache
         - verbose: "true"
     - script:
@@ -45,6 +45,8 @@ workflows:
         is_skippable: false
         inputs:
         - verbose: "true"
+        - key: |-
+            {{ getenv "BITRISEIO_STACK_ID" }}-dart-cache-{{ checksum "pubspec.lock" }}
     - script:
         title: Check restored cache
         inputs:
