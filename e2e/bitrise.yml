@@ -7,6 +7,10 @@ workflows:
     - TEST_APP_URL: https://github.com/bitrise-io/sample-apps-flutter-veggieseasons.git
     - COMMIT: 6210b5dff666ff15fabb66cbfbc51a2b53a3c511
     - FLUTTER_VERSION: 3.13.6
+    # Fixed, world-writable pub cache. The step's cache key is not stack-scoped,
+    # so a restore can pull another stack's archive; keeping the pub cache identical
+    # and writable on every stack avoids extracting into a previous stack's /root home.
+    - PUB_CACHE: /tmp/bitrise-pub-cache
     before_run:
     - _setup
     steps:
@@ -31,14 +35,14 @@ workflows:
         inputs:
         - key: |-
             {{ .OS }}-{{ .Arch }}-dart-cache-{{ checksum "pubspec.lock" }}
-        - paths: ~/.pub-cache
+        - paths: $PUB_CACHE
         - verbose: "true"
     - script:
         title: Remove pub cache
         inputs:
         - content: |
             set -ex
-            rm -rf ~/.pub-cache
+            rm -rf "$PUB_CACHE"
     - path::./:
         title: Execute step
         run_if: "true"
@@ -52,8 +56,8 @@ workflows:
             set -ex
 
             echo $BITRISE_CACHE_HIT
-            if [ ! -d ~/.pub-cache ]; then
-              echo "~/.pub-cache directory doesn't exist"
+            if [ ! -d "$PUB_CACHE" ]; then
+              echo "$PUB_CACHE directory doesn't exist"
               exit 1
             fi
     - script:
